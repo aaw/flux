@@ -75,13 +75,12 @@ class MQLTranslator
           @redis.zremrangebyrank(set_name, 0, -1 - handler['maxStoredValues'])
         end
         value_id = "#{set_name}:#{value}"
-        rollup_id = MurmurHash3::V32.murmur3_32_str_hash(set_name) % @rollup_modulus
         @log.debug { "Incrementing distinct count for #{set_name}" }
         @counter.add("flux:distinct:#{set_name}", value_id)
         @log.debug { "Incrementing gross count for #{set_name}" }
         @counter.add("flux:gross:#{set_name}", op_counter(timestamp, value_id).to_s)
         @log.debug { "Incrementing current time rollup counter #{rollup_id}" }
-        @counter.add("flux:time-rollup:current:#{rollup_id}", value_id)
+        @counter.add("flux:time-rollup:current:#{rollup_id(set_name)}", value_id)
       elsif handler['remove']
         @log.debug { "Removing '#{value}' from #{set_name}" }
         @redis.zrem("flux:set:#{set_name}", value)
@@ -89,13 +88,12 @@ class MQLTranslator
     end
   end
 
-  def get_distinct_count(keys, op = :union)
+  def get_distinct_count(keys, options)
+    op = options[:op] || 'union'
+    from_time = options[:from]
+    until_time = options[:until]
     namespaced_keys = keys.map { |key| "flux:distinct:#{key}" }
-    if namespaced_keys.size == 0
-      0
-    elsif namespaced_keys.size == 1
-      @counter.count(namespaced_keys[0])
-    elsif op.to_s == 'union'
+    if op.to_s == 'union'
       @counter.union(*namespaced_keys)
     elsif op.to_s == 'intersection'
       @counter.intersection(*namespaced_keys)
@@ -184,6 +182,28 @@ class MQLTranslator
       entries
     end
     CartesianProduct.new(*multiplicands)
+  end
+  
+  def resolve_time_range_to_keys(key, time_from, time_until)
+    bucket_id = rollup_id(key)
+    candidates = []
+    candidates << "flux:time-rollup:current:#{bucket_id}" if (Time.now.to_i - time_until) <= 60
+    stage = 1
+    while true
+      current_candidates = @redis.keys("flux:time-rollup:#{stage}:#{bucket_id}:*")
+      current_candidates.select! do |key|
+        start_time, end_time = key.split(':').last(2).map{ |x| x.to_i }
+        (start_time <= time_from && time_from <= end_time) || (start_time <= time_until && time_until <= end_time)
+      end
+      break if current_candidates.empty?
+      candidates += current_candidates
+      stage *= 2
+    end
+    candidates.sort_by{ |k| k.split(':').last.to_i }
+  end
+    
+  def rollup_id(set_name)
+    MurmurHash3::V32.murmur3_32_str_hash(set_name) % @rollup_modulus
   end
 
   def redis_up?

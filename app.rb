@@ -35,7 +35,8 @@ end
 # Get a distinct add count
 get '/distinct' do
   content_type :json
-  { 'count' => translator.get_distinct_count(params['keys'], params['op']) }.to_json
+  options = { op: params['op'], from: params['from'], until: params['until'] }
+  { 'count' => translator.get_distinct_count(params['keys'], options) }.to_json
 end
 
 # Get a gross add count
