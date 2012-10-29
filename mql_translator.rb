@@ -39,7 +39,7 @@ class MQLTranslator
         begin
           execute_handler(handler, event_name, args)
         rescue Exception => e
-          throw e unless e.message =~ /^Undefined attribute/
+          throw unless e.message =~ /^Undefined attribute/
         end
       end
     end
@@ -75,12 +75,13 @@ class MQLTranslator
           @redis.zremrangebyrank(set_name, 0, -1 - handler['maxStoredValues'])
         end
         value_id = "#{set_name}:#{value}"
+        rollup_bucket = rollup_id(set_name)
         @log.debug { "Incrementing distinct count for #{set_name}" }
         @counter.add("flux:distinct:#{set_name}", value_id)
         @log.debug { "Incrementing gross count for #{set_name}" }
         @counter.add("flux:gross:#{set_name}", op_counter(timestamp, value_id).to_s)
-        @log.debug { "Incrementing current time rollup counter #{rollup_id}" }
-        @counter.add("flux:time-rollup:current:#{rollup_id(set_name)}", value_id)
+        @log.debug { "Incrementing current time rollup counter #{rollup_bucket}" }
+        @counter.add("flux:time-rollup:current:#{rollup_bucket}", value_id)
       elsif handler['remove']
         @log.debug { "Removing '#{value}' from #{set_name}" }
         @redis.zrem("flux:set:#{set_name}", value)
@@ -90,9 +91,28 @@ class MQLTranslator
 
   def get_distinct_count(keys, options)
     op = options[:op] || 'union'
-    from_time = options[:from]
-    until_time = options[:until]
+    from_time = options[:from].to_i if options[:from]
+    until_time = options[:until].to_i if options[:until]
     namespaced_keys = keys.map { |key| "flux:distinct:#{key}" }
+
+    if from_time || until_time
+      temp_key = "flux:temp:#{SecureRandom.uuid}"
+      union_keys = keys.map{ |key| resolve_time_range_to_keys(key, from_time, until_time) }.flatten if from_time || until_time
+      @log.debug { "Storing union of keys #{union_keys} in #{temp_key} for time range comparison" }
+      @counter.union_store(temp_key, *union_keys)
+      retval = 0
+      if op.to_s == 'union'
+        temp_union = "flux:temp:#{SecureRandom.uuid}"
+        unioned_key = @counter.union_store(temp_union, *namespaced_keys)
+        retval = @counter.intersection(temp_key, temp_union)
+        @redis.del(temp_union)
+      elsif op.to_s == 'intersection'
+        retval = @counter.intersection(temp_key, *namespaced_keys)
+      end
+      @redis.del(temp_key)
+      return retval
+    end
+
     if op.to_s == 'union'
       @counter.union(*namespaced_keys)
     elsif op.to_s == 'intersection'
@@ -185,6 +205,8 @@ class MQLTranslator
   end
   
   def resolve_time_range_to_keys(key, time_from, time_until)
+    time_from ||= 0
+    time_until ||= Time.now.to_i
     bucket_id = rollup_id(key)
     candidates = []
     candidates << "flux:time-rollup:current:#{bucket_id}" if (Time.now.to_i - time_until) <= 60
