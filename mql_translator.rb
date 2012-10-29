@@ -12,6 +12,7 @@ class MQLTranslator
     @counter = counter
     @schema = schema
     @op_counter_lower_bits = 0
+    @rollup_modulus = 2 ** [(options[:rollup_modulus_bitwidth] || 0), 10].min
     if options[:logger]
       @log = options[:logger]
     else
@@ -73,10 +74,14 @@ class MQLTranslator
           @log.debug { "Trimming the stored set to hold at most #{handler['maxStoredValues']} values" }
           @redis.zremrangebyrank(set_name, 0, -1 - handler['maxStoredValues'])
         end
+        value_id = "#{set_name}:#{value}"
+        rollup_id = MurmurHash3::V32.murmur3_32_str_hash(set_name) % @rollup_modulus
         @log.debug { "Incrementing distinct count for #{set_name}" }
-        @counter.add("flux:distinct:#{set_name}", value)
+        @counter.add("flux:distinct:#{set_name}", value_id)
         @log.debug { "Incrementing gross count for #{set_name}" }
-        @counter.add("flux:gross:#{set_name}", op_counter(timestamp, value).to_s)
+        @counter.add("flux:gross:#{set_name}", op_counter(timestamp, value_id).to_s)
+        @log.debug { "Incrementing current time rollup counter #{rollup_id}" }
+        @counter.add("flux:time-rollup:current:#{rollup_id}", value_id)
       elsif handler['remove']
         @log.debug { "Removing '#{value}' from #{set_name}" }
         @redis.zrem("flux:set:#{set_name}", value)
