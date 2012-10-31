@@ -16,4 +16,5 @@ group :development, :test do
   gem 'rack-test', '~> 0.6.1'
   gem 'rake', '~> 0.9.2.2'
   gem 'rspec', '~> 2.11.0'
+  gem 'timecop', '~> 0.5.3'
 end
