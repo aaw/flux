@@ -87,8 +87,8 @@ runs on localhost:5100.
 
 You can try out generating events and running queries via curl:
 
-    $ curl "http://localhost:5000/event/client:gravity:action:follow:user?follower=user:2&followee=user:1"
-    $ curl "http://localhost:5000/event/client:gravity:action:post?user=user:1&post=post:1&@targets=[user].followers.feedItems&@add=post"
-    $ curl http://localhost:5000/query/user:2:feedItems && echo
+    $ curl --data "[[\"client:gravity:action:follow:user\",{\"follower\":\"user:2\", \"followee\":\"user:1\"}]]" http://localhost:5000/events
+    $ curl --data "[[\"client:gravity:action:post\",{\"user\":\"user:1\", \"post\":\"post:1\", \"@targets\":[\"[user].followers.feedItems\"], \"@add\":\"post\"}]]" http://localhost:5000/events
+    $ curl "http://localhost:5000/query?keys\[\]=user:2:feedItems" && echo
     {"results":["post:1"]}
     $
