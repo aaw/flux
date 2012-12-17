@@ -1,6 +1,4 @@
 require 'json'
-require 'logger'
-require 'redis'
 require 'resque'
 require 'sinatra'
 
@@ -11,14 +9,29 @@ require './sync_database.rb'
 config = YAML.load(File.read('config/app.yml'))[ENV['RACK_ENV'] || 'development']
 translator = MQLTranslator.load(config)
 
-# Receive an event
-get '/event/:event' do
+# Receive an event or multiple events. For a single event, the event name must
+# be part of the route and the parameters in the URL parameters. Multiple events
+# are sent to /event in the body of the POST, in a list of pairs of [event, params]
+post '/event/:event?' do
   content_type :json
   if ENV['READ_ONLY'] =~ /1|yes|true/
     halt 501, { error: "This Flux server is read-only" }.to_json
   end
   event_name = params.delete('event')
   Resque.enqueue(QueuedEvent, config, event_name, params)
+end
+
+post '/events' do
+  content_type :json
+  if ENV['READ_ONLY'] =~ /1|yes|true/
+    halt 501, { error: "This Flux server is read-only" }.to_json
+  end
+  
+  events = JSON.parse(request.body.read.to_s)
+  events.each do |event_name, params|
+    Resque.enqueue(QueuedEvent, config, event_name, params)
+  end
+  nil
 end
 
 # Run a query

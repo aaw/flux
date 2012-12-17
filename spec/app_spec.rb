@@ -13,7 +13,7 @@ describe 'Flux' do
 
   describe "query paging" do
     before(:each) do
-      100.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" }
+      100.times { |i| post "/events", [['client:gravity:action:follow:user', {followee: 'user0', follower: "user#{i+1}"}]].to_json }
     end
     it "returns a cursor as part of the result set if results aren't exhausted" do
       get "/query?keys[]=user0:followers&maxResults=10"
@@ -43,10 +43,10 @@ describe 'Flux' do
       result_set_size = 1
 
       5.times do |i|
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user#{3*i+1}&@score=#{3*i+1}"
-        get "/event/client:gravity:action:follow:user?followee=user2&follower=user#{3*i+2}&@score=#{3*i+2}"
-        get "/event/client:gravity:action:follow:user?followee=user3&follower=user#{3*i+3}&@score=#{3*i+3}"
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user#{3*i+3}&@score=#{3*i+3}"
+        post "/events", [['client:gravity:action:follow:user', {follower: "user#{3*i+1}", followee: 'user1', '@score' => 3*i+1}],
+                         ['client:gravity:action:follow:user', {follower: "user#{3*i+2}", followee: 'user2', '@score' => 3*i+2}],
+                         ['client:gravity:action:follow:user', {follower: "user#{3*i+3}", followee: 'user3', '@score' => 3*i+3}],
+                         ['client:gravity:action:follow:user', {follower: "user#{3*i+3}", followee: 'user1', '@score' => 3*i+3}]].to_json
       end
 
       get "/query?keys[]=user1:followers&keys[]=user2:followers&keys[]=user3:followers&maxResults=#{result_set_size}"
@@ -80,11 +80,11 @@ describe 'Flux' do
     
     describe "score ranges" do
       before(:each) do
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user2&@score=8"
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user3&@score=9"
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user4&@score=10"
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user5&@score=11"
-        get "/event/client:gravity:action:follow:user?followee=user1&follower=user6&@score=12"
+        post "/events", [['client:gravity:action:follow:user', {follower: "user2", followee: 'user1', '@score' => 8}],
+                         ['client:gravity:action:follow:user', {follower: "user3", followee: 'user1', '@score' => 9}],
+                         ['client:gravity:action:follow:user', {follower: "user4", followee: 'user1', '@score' => 10}],
+                         ['client:gravity:action:follow:user', {follower: "user5", followee: 'user1', '@score' => 11}],
+                         ['client:gravity:action:follow:user', {follower: "user6", followee: 'user1', '@score' => 12}]].to_json
       end
       it "accepts a maxScore argument to restrict results" do
         get "/query?keys[]=user1:followers&maxScore=10"
@@ -111,7 +111,7 @@ describe 'Flux' do
 
   describe "distinct counts" do
     it "returns a decent correct distinct add event count for a set" do
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json } }
       get "/distinct?keys[]=user0:followers"
       JSON.parse(last_response.body)['count'].should be_within(10).of(50)
     end
@@ -120,19 +120,19 @@ describe 'Flux' do
       JSON.parse(last_response.body)['count'].should == 0
     end
     it "returns a correct union count for sets" do
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" } }
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user1&follower=user#{i+31}" } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+31}", followee: 'user1'}]].to_json } } 
       get "/distinct?keys[]=user0:followers&keys[]=user1:followers&op=union"
       JSON.parse(last_response.body)['count'].should be_within(10).of(80)
     end
     it "returns a correct intersection count for sets" do
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" } }
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user1&follower=user#{i+21}" } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+21}", followee: 'user1'}]].to_json } } 
       get "/distinct?keys[]=user0:followers&keys[]=user1:followers&op=intersection"
       JSON.parse(last_response.body)['count'].should be_within(10).of(30)
     end
     it "accepts a minScore argument to restrict results" do
-      10.times { 50.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}&@score=#{i+1}" } }
+      10.times { 50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0', '@score' => i+1}]].to_json } } 
       get "/distinct?keys[]=user0:followers&minScore=40"
       JSON.parse(last_response.body)['count'].should be_within(5).of(10)
     end
@@ -144,8 +144,8 @@ describe 'Flux' do
 
   describe "gross counts" do
     it "returns a correct gross add event count for a set" do
-      17.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" }
-      17.times { |i| get "/event/client:gravity:action:unfollow:user?followee=user0&follower=user#{i+1}" }
+      17.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
+      17.times { |i| post "/events", [['client:gravity:action:unfollow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
       get "/gross?keys[]=user0:followers"
       JSON.parse(last_response.body)['count'].should be_within(5).of(17)
     end
@@ -154,25 +154,25 @@ describe 'Flux' do
       JSON.parse(last_response.body)['count'].should == 0
     end
     it "returns a correct concatenated count for sets" do
-      17.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" }
-      17.times { |i| get "/event/client:gravity:action:unfollow:user?followee=user0&follower=user#{i+1}" }
-      17.times { |i| get "/event/client:gravity:action:follow:user?followee=user1&follower=user#{i+1}" }
-      17.times { |i| get "/event/client:gravity:action:unfollow:user?followee=user1&follower=user#{i+1}" }
+      17.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
+      17.times { |i| post "/events", [['client:gravity:action:unfollow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
+      17.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user1'}]].to_json }
+      17.times { |i| post "/events", [['client:gravity:action:unfollow:user', {follower: "user#{i+1}", followee: 'user1'}]].to_json }
       get "/gross?keys[]=user0:followers&keys[]=user1:followers"
       JSON.parse(last_response.body)['count'].should be_within(10).of(34)
     end
     it "counts keys added with the same op counter to be identical" do
       5.times do
-        17.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}&@score=1" }
-        17.times { |i| get "/event/client:gravity:action:unfollow:user?followee=user0&follower=user#{i+1}&@score=1" }
+        17.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0', '@score' => 1}]].to_json }
+        17.times { |i| post "/events", [['client:gravity:action:unfollow:user', {follower: "user#{i+1}", followee: 'user0', '@score' => 1}]].to_json }
       end
-      17.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}" }
-      17.times { |i| get "/event/client:gravity:action:unfollow:user?followee=user0&follower=user#{i+1}" }
+      17.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
+      17.times { |i| post "/events", [['client:gravity:action:unfollow:user', {follower: "user#{i+1}", followee: 'user0'}]].to_json }
       get "/gross?keys[]=user0:followers&keys[]=user1:followers"
       JSON.parse(last_response.body)['count'].should be_within(10).of(34)
     end
     it "accepts a minScore argument to restrict results" do
-      50.times { |i| get "/event/client:gravity:action:follow:user?followee=user0&follower=user#{i+1}&@score=#{i+1}" }
+      50.times { |i| post "/events", [['client:gravity:action:follow:user', {follower: "user#{i+1}", followee: 'user0', '@score' => i+1}]].to_json }
       get "/distinct?keys[]=user0:followers&minScore=40"
       JSON.parse(last_response.body)['count'].should be_within(5).of(10)      
     end
@@ -204,7 +204,7 @@ describe 'Flux' do
     it "rejects events if the READ_ONLY environment variable is set" do
       get "/query?keys[]=user1:followers&maxResults=10"
       last_response.status.should == 200
-      get "/event/client:gravity:action:follow:user?follower=user2&followee=user1"
+      post "/events", [['client:gravity:action:follow:user', {follower: "user2", followee: 'user1'}]].to_json
       last_response.status.should == 501
     end
   end
