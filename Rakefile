@@ -1,4 +1,5 @@
 require 'resque/tasks'
+require 'yaml'
 require './queued_event.rb'
 require './sync_database.rb'
 
